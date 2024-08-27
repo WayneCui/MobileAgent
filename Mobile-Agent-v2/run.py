@@ -3,6 +3,9 @@ import time
 import copy
 import torch
 import shutil
+import logging
+import yaml
+
 from PIL import Image, ImageDraw
 
 from MobileAgent.api import inference_chat
@@ -21,6 +24,9 @@ import dashscope
 import concurrent
 
 ####################################### Edit your Setting #########################################
+with open('config.yml', 'r') as file:
+    prime_service = yaml.safe_load(file)
+    
 # Your ADB path
 adb_path = ""
 
@@ -51,7 +57,6 @@ reflection_switch = True
 # Memory Setting: If you want to improve the operating speed, you can disable the memory unit. This may reduce the success rate.
 memory_switch = True
 ###################################################################################################
-
 
 def get_all_files_in_folder(folder_path):
     file_list = []
@@ -231,173 +236,213 @@ def get_perception_infos(adb_path, screenshot_file):
         
     return perception_infos, width, height
 
-### Load caption model ###
-device = "cuda"
-torch.manual_seed(1234)
-if caption_call_method == "local":
-    if caption_model == "qwen-vl-chat":
-        model_dir = snapshot_download('qwen/Qwen-VL-Chat', revision='v1.1.0')
-        model = AutoModelForCausalLM.from_pretrained(model_dir, device_map=device, trust_remote_code=True).eval()
-        model.generation_config = GenerationConfig.from_pretrained(model_dir, trust_remote_code=True)
-    elif caption_model == "qwen-vl-chat-int4":
-        qwen_dir = snapshot_download("qwen/Qwen-VL-Chat-Int4", revision='v1.0.0')
-        model = AutoModelForCausalLM.from_pretrained(qwen_dir, device_map=device, trust_remote_code=True,use_safetensors=True).eval()
-        model.generation_config = GenerationConfig.from_pretrained(qwen_dir, trust_remote_code=True, do_sample=False)
+def run(args):
+    ### init logging ###
+    # Create a logger and set the log level to INFO
+    logger = logging.getLogger(__name__)
+    logger.setLevel(logging.INFO)
+
+    # Add a StreamHandler to send log messages to console
+    console_handler = logging.StreamHandler()
+    logger.addHandler(console_handler)
+
+    # Create a file handler
+    action = ''
+    millis = int(round(time.time() * 1000))
+    file_handler = logging.FileHandler(f'my_log{action}_{millis}.log')
+    logger.addHandler(file_handler)
+
+    ### Load caption model ###
+    device = "cuda"
+    torch.manual_seed(1234)
+    if caption_call_method == "local":
+        if caption_model == "qwen-vl-chat":
+            model_dir = snapshot_download('qwen/Qwen-VL-Chat', revision='v1.1.0')
+            model = AutoModelForCausalLM.from_pretrained(model_dir, device_map=device, trust_remote_code=True).eval()
+            model.generation_config = GenerationConfig.from_pretrained(model_dir, trust_remote_code=True)
+        elif caption_model == "qwen-vl-chat-int4":
+            qwen_dir = snapshot_download("qwen/Qwen-VL-Chat-Int4", revision='v1.0.0')
+            model = AutoModelForCausalLM.from_pretrained(qwen_dir, device_map=device, trust_remote_code=True,use_safetensors=True).eval()
+            model.generation_config = GenerationConfig.from_pretrained(qwen_dir, trust_remote_code=True, do_sample=False)
+        else:
+            print("If you choose local caption method, you must choose the caption model from \"Qwen-vl-chat\" and \"Qwen-vl-chat-int4\"")
+            exit(0)
+        tokenizer = AutoTokenizer.from_pretrained(qwen_dir, trust_remote_code=True)
+    elif caption_call_method == "api":
+        pass
     else:
-        print("If you choose local caption method, you must choose the caption model from \"Qwen-vl-chat\" and \"Qwen-vl-chat-int4\"")
+        print("You must choose the caption model call function from \"local\" and \"api\"")
         exit(0)
-    tokenizer = AutoTokenizer.from_pretrained(qwen_dir, trust_remote_code=True)
-elif caption_call_method == "api":
-    pass
-else:
-    print("You must choose the caption model call function from \"local\" and \"api\"")
-    exit(0)
 
 
-### Load ocr and icon detection model ###
-groundingdino_dir = snapshot_download('AI-ModelScope/GroundingDINO', revision='v1.0.0')
-groundingdino_model = pipeline('grounding-dino-task', model=groundingdino_dir)
-ocr_detection = pipeline(Tasks.ocr_detection, model='damo/cv_resnet18_ocr-detection-line-level_damo')
-ocr_recognition = pipeline(Tasks.ocr_recognition, model='damo/cv_convnextTiny_ocr-recognition-document_damo')
+    ### Load ocr and icon detection model ###
+    groundingdino_dir = snapshot_download('AI-ModelScope/GroundingDINO', revision='v1.0.0')
+    groundingdino_model = pipeline('grounding-dino-task', model=groundingdino_dir)
+    ocr_detection = pipeline(Tasks.ocr_detection, model='damo/cv_resnet18_ocr-detection-line-level_damo')
+    ocr_recognition = pipeline(Tasks.ocr_recognition, model='damo/cv_convnextTiny_ocr-recognition-document_damo')
 
 
-thought_history = []
-summary_history = []
-action_history = []
-summary = ""
-action = ""
-completed_requirements = ""
-memory = ""
-insight = ""
-temp_file = "temp"
-screenshot = "screenshot"
-if not os.path.exists(temp_file):
-    os.mkdir(temp_file)
-else:
-    shutil.rmtree(temp_file)
-    os.mkdir(temp_file)
-if not os.path.exists(screenshot):
-    os.mkdir(screenshot)
-error_flag = False
+    thought_history = []
+    summary_history = []
+    action_history = []
+    summary = ""
+    action = ""
+    completed_requirements = ""
+    memory = ""
+    insight = ""
+    temp_file = "temp"
+    screenshot = "screenshot"
+    if not os.path.exists(temp_file):
+        os.mkdir(temp_file)
+    else:
+        shutil.rmtree(temp_file)
+        os.mkdir(temp_file)
+    if not os.path.exists(screenshot):
+        os.mkdir(screenshot)
+    error_flag = False
 
+    iter = 0
+    while True:
+        iter += 1
+        if iter == 1:
+            screenshot_file = "./screenshot/screenshot.jpg"
+            perception_infos, width, height = get_perception_infos(adb_path, screenshot_file)
+            shutil.rmtree(temp_file)
+            os.mkdir(temp_file)
+            
+            keyboard = False
+            keyboard_height_limit = 0.9 * height
+            for perception_info in perception_infos:
+                if perception_info['coordinates'][1] < keyboard_height_limit:
+                    continue
+                if 'ADB Keyboard' in perception_info['text']:
+                    keyboard = True
+                    break
 
-iter = 0
-while True:
-    iter += 1
-    if iter == 1:
-        screenshot_file = "./screenshot/screenshot.jpg"
+        prompt_action = get_action_prompt(instruction, perception_infos, width, height, keyboard, summary_history, action_history, summary, action, add_info, error_flag, completed_requirements, memory)
+        chat_action = init_action_chat()
+        chat_action = add_response("user", prompt_action, chat_action, screenshot_file)
+
+        output_action = inference_chat(chat_action, 'gpt-4o', API_url, token)
+        thought = output_action.split("### Thought ###")[-1].split("### Action ###")[0].replace("\n", " ").replace(":", "").replace("  ", " ").strip()
+        summary = output_action.split("### Operation ###")[-1].replace("\n", " ").replace("  ", " ").strip()
+        action = output_action.split("### Action ###")[-1].split("### Operation ###")[0].replace("\n", " ").replace("  ", " ").strip()
+        chat_action = add_response("assistant", output_action, chat_action)
+        status = "#" * 50 + " Decision " + "#" * 50
+        print(status)
+        print(output_action)
+        print('#' * len(status))
+        
+        if memory_switch:
+            prompt_memory = get_memory_prompt(insight)
+            chat_action = add_response("user", prompt_memory, chat_action)
+            output_memory = inference_chat(chat_action, 'gpt-4o', API_url, token)
+            chat_action = add_response("assistant", output_memory, chat_action)
+            status = "#" * 50 + " Memory " + "#" * 50
+            print(status)
+            print(output_memory)
+            print('#' * len(status))
+            output_memory = output_memory.split("### Important content ###")[-1].split("\n\n")[0].strip() + "\n"
+            if "None" not in output_memory and output_memory not in memory:
+                memory += output_memory
+        
+        if "Open app" in action:
+            app_name = action.split("(")[-1].split(")")[0]
+            text, coordinate = ocr(screenshot_file, ocr_detection, ocr_recognition)
+            tap_coordinate = [0, 0]
+            for ti in range(len(text)):
+                if app_name == text[ti]:
+                    name_coordinate = [int((coordinate[ti][0] + coordinate[ti][2])/2), int((coordinate[ti][1] + coordinate[ti][3])/2)]
+                    tap(adb_path, name_coordinate[0], name_coordinate[1]- int(coordinate[ti][3] - coordinate[ti][1]))# 
+        
+        elif "Tap" in action:
+            coordinate = action.split("(")[-1].split(")")[0].split(", ")
+            x, y = int(coordinate[0]), int(coordinate[1])
+            tap(adb_path, x, y)
+        
+        elif "Swipe" in action:
+            coordinate1 = action.split("Swipe (")[-1].split("), (")[0].split(", ")
+            coordinate2 = action.split("), (")[-1].split(")")[0].split(", ")
+            x1, y1 = int(coordinate1[0]), int(coordinate1[1])
+            x2, y2 = int(coordinate2[0]), int(coordinate2[1])
+            slide(adb_path, x1, y1, x2, y2)
+            
+        elif "Type" in action:
+            if "(text)" not in action:
+                text = action.split("(")[-1].split(")")[0]
+            else:
+                text = action.split(" \"")[-1].split("\"")[0]
+            type(adb_path, text)
+        
+        elif "Back" in action:
+            back(adb_path)
+        
+        elif "Home" in action:
+            home(adb_path)
+            
+        elif "Stop" in action:
+            break
+        
+        time.sleep(5)
+        
+        last_perception_infos = copy.deepcopy(perception_infos)
+        last_screenshot_file = "./screenshot/last_screenshot.jpg"
+        last_keyboard = keyboard
+        if os.path.exists(last_screenshot_file):
+            os.remove(last_screenshot_file)
+        os.rename(screenshot_file, last_screenshot_file)
+        
         perception_infos, width, height = get_perception_infos(adb_path, screenshot_file)
         shutil.rmtree(temp_file)
         os.mkdir(temp_file)
         
         keyboard = False
-        keyboard_height_limit = 0.9 * height
         for perception_info in perception_infos:
             if perception_info['coordinates'][1] < keyboard_height_limit:
                 continue
             if 'ADB Keyboard' in perception_info['text']:
                 keyboard = True
                 break
-
-    prompt_action = get_action_prompt(instruction, perception_infos, width, height, keyboard, summary_history, action_history, summary, action, add_info, error_flag, completed_requirements, memory)
-    chat_action = init_action_chat()
-    chat_action = add_response("user", prompt_action, chat_action, screenshot_file)
-
-    output_action = inference_chat(chat_action, 'gpt-4o', API_url, token)
-    thought = output_action.split("### Thought ###")[-1].split("### Action ###")[0].replace("\n", " ").replace(":", "").replace("  ", " ").strip()
-    summary = output_action.split("### Operation ###")[-1].replace("\n", " ").replace("  ", " ").strip()
-    action = output_action.split("### Action ###")[-1].split("### Operation ###")[0].replace("\n", " ").replace("  ", " ").strip()
-    chat_action = add_response("assistant", output_action, chat_action)
-    status = "#" * 50 + " Decision " + "#" * 50
-    print(status)
-    print(output_action)
-    print('#' * len(status))
-    
-    if memory_switch:
-        prompt_memory = get_memory_prompt(insight)
-        chat_action = add_response("user", prompt_memory, chat_action)
-        output_memory = inference_chat(chat_action, 'gpt-4o', API_url, token)
-        chat_action = add_response("assistant", output_memory, chat_action)
-        status = "#" * 50 + " Memory " + "#" * 50
-        print(status)
-        print(output_memory)
-        print('#' * len(status))
-        output_memory = output_memory.split("### Important content ###")[-1].split("\n\n")[0].strip() + "\n"
-        if "None" not in output_memory and output_memory not in memory:
-            memory += output_memory
-    
-    if "Open app" in action:
-        app_name = action.split("(")[-1].split(")")[0]
-        text, coordinate = ocr(screenshot_file, ocr_detection, ocr_recognition)
-        tap_coordinate = [0, 0]
-        for ti in range(len(text)):
-            if app_name == text[ti]:
-                name_coordinate = [int((coordinate[ti][0] + coordinate[ti][2])/2), int((coordinate[ti][1] + coordinate[ti][3])/2)]
-                tap(adb_path, name_coordinate[0], name_coordinate[1]- int(coordinate[ti][3] - coordinate[ti][1]))# 
-    
-    elif "Tap" in action:
-        coordinate = action.split("(")[-1].split(")")[0].split(", ")
-        x, y = int(coordinate[0]), int(coordinate[1])
-        tap(adb_path, x, y)
-    
-    elif "Swipe" in action:
-        coordinate1 = action.split("Swipe (")[-1].split("), (")[0].split(", ")
-        coordinate2 = action.split("), (")[-1].split(")")[0].split(", ")
-        x1, y1 = int(coordinate1[0]), int(coordinate1[1])
-        x2, y2 = int(coordinate2[0]), int(coordinate2[1])
-        slide(adb_path, x1, y1, x2, y2)
         
-    elif "Type" in action:
-        if "(text)" not in action:
-            text = action.split("(")[-1].split(")")[0]
+        if reflection_switch:
+            prompt_reflect = get_reflect_prompt(instruction, last_perception_infos, perception_infos, width, height, last_keyboard, keyboard, summary, action, add_info)
+            chat_reflect = init_reflect_chat()
+            chat_reflect = add_response_two_image("user", prompt_reflect, chat_reflect, [last_screenshot_file, screenshot_file])
+
+            output_reflect = inference_chat(chat_reflect, 'gpt-4o', API_url, token)
+            reflect = output_reflect.split("### Answer ###")[-1].replace("\n", " ").strip()
+            chat_reflect = add_response("assistant", output_reflect, chat_reflect)
+            status = "#" * 50 + " Reflcetion " + "#" * 50
+            print(status)
+            print(output_reflect)
+            print('#' * len(status))
+        
+            if 'A' in reflect:
+                thought_history.append(thought)
+                summary_history.append(summary)
+                action_history.append(action)
+                
+                prompt_planning = get_process_prompt(instruction, thought_history, summary_history, action_history, completed_requirements, add_info)
+                chat_planning = init_memory_chat()
+                chat_planning = add_response("user", prompt_planning, chat_planning)
+                output_planning = inference_chat(chat_planning, 'gpt-4-turbo', API_url, token)
+                chat_planning = add_response("assistant", output_planning, chat_planning)
+                status = "#" * 50 + " Planning " + "#" * 50
+                print(status)
+                print(output_planning)
+                print('#' * len(status))
+                completed_requirements = output_planning.split("### Completed contents ###")[-1].replace("\n", " ").strip()
+                
+                error_flag = False
+            
+            elif 'B' in reflect:
+                error_flag = True
+                back(adb_path)
+                
+            elif 'C' in reflect:
+                error_flag = True
+        
         else:
-            text = action.split(" \"")[-1].split("\"")[0]
-        type(adb_path, text)
-    
-    elif "Back" in action:
-        back(adb_path)
-    
-    elif "Home" in action:
-        home(adb_path)
-        
-    elif "Stop" in action:
-        break
-    
-    time.sleep(5)
-    
-    last_perception_infos = copy.deepcopy(perception_infos)
-    last_screenshot_file = "./screenshot/last_screenshot.jpg"
-    last_keyboard = keyboard
-    if os.path.exists(last_screenshot_file):
-        os.remove(last_screenshot_file)
-    os.rename(screenshot_file, last_screenshot_file)
-    
-    perception_infos, width, height = get_perception_infos(adb_path, screenshot_file)
-    shutil.rmtree(temp_file)
-    os.mkdir(temp_file)
-    
-    keyboard = False
-    for perception_info in perception_infos:
-        if perception_info['coordinates'][1] < keyboard_height_limit:
-            continue
-        if 'ADB Keyboard' in perception_info['text']:
-            keyboard = True
-            break
-    
-    if reflection_switch:
-        prompt_reflect = get_reflect_prompt(instruction, last_perception_infos, perception_infos, width, height, last_keyboard, keyboard, summary, action, add_info)
-        chat_reflect = init_reflect_chat()
-        chat_reflect = add_response_two_image("user", prompt_reflect, chat_reflect, [last_screenshot_file, screenshot_file])
-
-        output_reflect = inference_chat(chat_reflect, 'gpt-4o', API_url, token)
-        reflect = output_reflect.split("### Answer ###")[-1].replace("\n", " ").strip()
-        chat_reflect = add_response("assistant", output_reflect, chat_reflect)
-        status = "#" * 50 + " Reflcetion " + "#" * 50
-        print(status)
-        print(output_reflect)
-        print('#' * len(status))
-    
-        if 'A' in reflect:
             thought_history.append(thought)
             summary_history.append(summary)
             action_history.append(action)
@@ -413,29 +458,16 @@ while True:
             print('#' * len(status))
             completed_requirements = output_planning.split("### Completed contents ###")[-1].replace("\n", " ").strip()
             
-            error_flag = False
-        
-        elif 'B' in reflect:
-            error_flag = True
-            back(adb_path)
-            
-        elif 'C' in reflect:
-            error_flag = True
-    
-    else:
-        thought_history.append(thought)
-        summary_history.append(summary)
-        action_history.append(action)
-        
-        prompt_planning = get_process_prompt(instruction, thought_history, summary_history, action_history, completed_requirements, add_info)
-        chat_planning = init_memory_chat()
-        chat_planning = add_response("user", prompt_planning, chat_planning)
-        output_planning = inference_chat(chat_planning, 'gpt-4-turbo', API_url, token)
-        chat_planning = add_response("assistant", output_planning, chat_planning)
-        status = "#" * 50 + " Planning " + "#" * 50
-        print(status)
-        print(output_planning)
-        print('#' * len(status))
-        completed_requirements = output_planning.split("### Completed contents ###")[-1].replace("\n", " ").strip()
-         
-    os.remove(last_screenshot_file)
+        os.remove(last_screenshot_file)
+
+def get_args():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--instruction", type=str)
+    parser.add_argument("--adb_path", type=str)
+    parser.add_argument("--api", type=str)
+    args = parser.parse_args()
+    return args
+
+if __name__ == "__main__":
+    args = get_args()
+    run(args)
