@@ -257,10 +257,10 @@ def do_run(args):
     logger.addHandler(console_handler)
 
     # Create a file handler
-    action = action = args.action if args.action is not None else args.prompt
-    print(action)
+    action = args.action if args.action is not None else args.prompt
     millis = int(round(time.time() * 1000))
-    file_handler = logging.FileHandler(f'run_log{action}_{millis}.log')
+    logs_dir = prime_service['logging']['path']
+    file_handler = logging.FileHandler(f'{logs_dir}run_log{action}_{millis}.log')
     logger.addHandler(file_handler)
 
     ### Load caption model ###
@@ -276,13 +276,13 @@ def do_run(args):
             model = AutoModelForCausalLM.from_pretrained(qwen_dir, device_map=device, trust_remote_code=True,use_safetensors=True).eval()
             model.generation_config = GenerationConfig.from_pretrained(qwen_dir, trust_remote_code=True, do_sample=False)
         else:
-            print("If you choose local caption method, you must choose the caption model from \"Qwen-vl-chat\" and \"Qwen-vl-chat-int4\"")
+            logger.error("If you choose local caption method, you must choose the caption model from \"Qwen-vl-chat\" and \"Qwen-vl-chat-int4\"")
             exit(0)
         tokenizer = AutoTokenizer.from_pretrained(qwen_dir, trust_remote_code=True)
     elif caption_call_method == "api":
         pass
     else:
-        print("You must choose the caption model call function from \"local\" and \"api\"")
+        logger.error("You must choose the caption model call function from \"local\" and \"api\"")
         exit(0)
 
 
@@ -322,7 +322,6 @@ def do_run(args):
         iter += 1
         if iter == 1:
             screenshot_file = "./screenshot/screenshot.jpg"
-            print(ocr_detection)
             perception_infos, width, height = get_perception_infos(adb_path, screenshot_file)
             shutil.rmtree(temp_file)
             os.mkdir(temp_file)
@@ -346,9 +345,9 @@ def do_run(args):
         action = output_action.split("### Action ###")[-1].split("### Operation ###")[0].replace("\n", " ").replace("  ", " ").strip()
         chat_action = add_response("assistant", output_action, chat_action)
         status = "#" * 50 + " Decision " + "#" * 50
-        print(status)
-        print(output_action)
-        print('#' * len(status))
+        logger.info(status)
+        logger.info(output_action)
+        logger.info('#' * len(status))
         
         if memory_switch:
             prompt_memory = get_memory_prompt(insight)
@@ -356,17 +355,15 @@ def do_run(args):
             output_memory = inference_chat(chat_action, 'gpt-4o', API_url, token)
             chat_action = add_response("assistant", output_memory, chat_action)
             status = "#" * 50 + " Memory " + "#" * 50
-            print(status)
-            print(output_memory)
-            print('#' * len(status))
+            logger.info(status)
+            logger.info(output_memory)
+            logger.info('#' * len(status))
             output_memory = output_memory.split("### Important content ###")[-1].split("\n\n")[0].strip() + "\n"
             if "None" not in output_memory and output_memory not in memory:
                 memory += output_memory
         
         if "Open app" in action:
             app_name = action.split("(")[-1].split(")")[0]
-            print('=====================================================')
-            print(ocr_detection)
             text, coordinate = ocr(screenshot_file, ocr_detection, ocr_recognition)
             tap_coordinate = [0, 0]
             for ti in range(len(text)):
@@ -432,9 +429,9 @@ def do_run(args):
             reflect = output_reflect.split("### Answer ###")[-1].replace("\n", " ").strip()
             chat_reflect = add_response("assistant", output_reflect, chat_reflect)
             status = "#" * 50 + " Reflcetion " + "#" * 50
-            print(status)
-            print(output_reflect)
-            print('#' * len(status))
+            logger.info(status)
+            logger.info(output_reflect)
+            logger.info('#' * len(status))
         
             if 'A' in reflect:
                 thought_history.append(thought)
@@ -447,9 +444,9 @@ def do_run(args):
                 output_planning = inference_chat(chat_planning, 'gpt-4-turbo', API_url, token)
                 chat_planning = add_response("assistant", output_planning, chat_planning)
                 status = "#" * 50 + " Planning " + "#" * 50
-                print(status)
-                print(output_planning)
-                print('#' * len(status))
+                logger.info(status)
+                logger.info(output_planning)
+                logger.info('#' * len(status))
                 completed_requirements = output_planning.split("### Completed contents ###")[-1].replace("\n", " ").strip()
                 
                 error_flag = False
@@ -472,9 +469,9 @@ def do_run(args):
             output_planning = inference_chat(chat_planning, 'gpt-4-turbo', API_url, token)
             chat_planning = add_response("assistant", output_planning, chat_planning)
             status = "#" * 50 + " Planning " + "#" * 50
-            print(status)
-            print(output_planning)
-            print('#' * len(status))
+            logger.info(status)
+            logger.info(output_planning)
+            logger.info('#' * len(status))
             completed_requirements = output_planning.split("### Completed contents ###")[-1].replace("\n", " ").strip()
             
         os.remove(last_screenshot_file)
@@ -494,23 +491,17 @@ def list_actions():
 
 def open_history():
     current_directory = os.getcwd()
-    print(current_directory)
     logs_dir = os.path.join(current_directory, 'logs')
-    print(logs_dir)
+
     subprocess.run(f'explorer "{logs_dir}"')
 
 def run(args):
     actions = args.actions
-    print(actions)
     action = args.action
-    print(action)
     prompt = args.prompt
-    print(prompt)
     history = args.history
-    print(history)
 
     if(actions is True):
-        print(list_actions())
         return list_actions()
     elif(action is not None):
         do_run(args)
@@ -519,7 +510,7 @@ def run(args):
         do_run(args)
         return
     elif(history is True):
-        print(open_history())
+        open_history()
         return
 
 if __name__ == "__main__":

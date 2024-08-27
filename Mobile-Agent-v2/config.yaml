@@ -1,34 +1,29 @@
 # Your ADB path
-adb_path = ""
+adb_path: "G:\\platform-tools-latest-windows\\platform-tools\\adb.exe"
 
 # Your instruction
-instruction = ""
+instruction: ""
 
 # Your GPT-4o API URL
-API_url = ""
+API_url: "https://oa.api2d.net/v1/chat/completions"
 
 # Your GPT-4o API Token
-token = ""
+token: "fk193431-fO1htWDxI33eMWHtRSXGa9uVT7BijnJl"
 
 # Choose between "api" and "local". api: use the qwen api. local: use the local qwen checkpoint
-caption_call_method = "api"
+caption_call_method: "api"
 
 # Choose between "qwen-vl-plus" and "qwen-vl-max" if use api method. Choose between "qwen-vl-chat" and "qwen-vl-chat-int4" if use local method.
-caption_model = "qwen-vl-plus"
+caption_model: "qwen-vl-plus"
 
 # If you choose the api caption call method, input your Qwen api here
-qwen_api = ""
+qwen_api: "sk-6312d0dfaccc4263bf9a4e86416d06c4"
 
 # You can add operational knowledge to help Agent operate more accurately.
-add_info = "If you want to tap an icon of an app, use the action \"Open app\". If you want to exit an app, use the action \"Home\""
+add_info: "If you want to tap an icon of an app, use the action \"Open app\". If you want to exit an app, use the action \"Home\""
 
 # Reflection Setting: If you want to improve the operating speed, you can disable the reflection agent. This may reduce the success rate.
-reflection_switch = True
+reflection_switch: True
 
 # Memory Setting: If you want to improve the operating speed, you can disable the memory unit. This may reduce the success rate.
-memory_switch = True
-
-#logging
-logging:
-  path:
-  level: info 
+memory_switch: True
