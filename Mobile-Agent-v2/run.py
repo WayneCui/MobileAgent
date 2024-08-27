@@ -1,10 +1,12 @@
 import os
+import subprocess
 import time
 import copy
 import torch
 import shutil
 import logging
 import yaml
+import argparse
 
 from PIL import Image, ImageDraw
 
@@ -24,20 +26,20 @@ import dashscope
 import concurrent
 
 ####################################### Edit your Setting #########################################
-with open('config.yml', 'r') as file:
+with open('config.yaml', 'r') as file:
     prime_service = yaml.safe_load(file)
     
 # Your ADB path
-adb_path = ""
+adb_path = prime_service['adb_path']
 
 # Your instruction
 instruction = ""
 
 # Your GPT-4o API URL
-API_url = ""
+API_url = prime_service['API_url']
 
 # Your GPT-4o API Token
-token = ""
+token = prime_service['token']
 
 # Choose between "api" and "local". api: use the qwen api. local: use the local qwen checkpoint
 caption_call_method = "api"
@@ -46,17 +48,25 @@ caption_call_method = "api"
 caption_model = "qwen-vl-plus"
 
 # If you choose the api caption call method, input your Qwen api here
-qwen_api = ""
+qwen_api = prime_service['qwen_api']
 
 # You can add operational knowledge to help Agent operate more accurately.
-add_info = "If you want to tap an icon of an app, use the action \"Open app\". If you want to exit an app, use the action \"Home\""
+add_info = prime_service['add_info']
 
 # Reflection Setting: If you want to improve the operating speed, you can disable the reflection agent. This may reduce the success rate.
-reflection_switch = True
+reflection_switch = prime_service['reflection_switch']
 
 # Memory Setting: If you want to improve the operating speed, you can disable the memory unit. This may reduce the success rate.
-memory_switch = True
+memory_switch = prime_service['memory_switch']
 ###################################################################################################
+
+ocr_detection=''
+ocr_recognition= ''
+# groundingdino_model = ''
+# temp_file = ''
+tokenizer = ''
+model = ''
+
 
 def get_all_files_in_folder(folder_path):
     file_list = []
@@ -236,7 +246,7 @@ def get_perception_infos(adb_path, screenshot_file):
         
     return perception_infos, width, height
 
-def run(args):
+def do_run(args):
     ### init logging ###
     # Create a logger and set the log level to INFO
     logger = logging.getLogger(__name__)
@@ -247,9 +257,10 @@ def run(args):
     logger.addHandler(console_handler)
 
     # Create a file handler
-    action = ''
+    action = action = args.action if args.action is not None else args.prompt
+    print(action)
     millis = int(round(time.time() * 1000))
-    file_handler = logging.FileHandler(f'my_log{action}_{millis}.log')
+    file_handler = logging.FileHandler(f'run_log{action}_{millis}.log')
     logger.addHandler(file_handler)
 
     ### Load caption model ###
@@ -277,8 +288,12 @@ def run(args):
 
     ### Load ocr and icon detection model ###
     groundingdino_dir = snapshot_download('AI-ModelScope/GroundingDINO', revision='v1.0.0')
+    global groundingdino_model
     groundingdino_model = pipeline('grounding-dino-task', model=groundingdino_dir)
+    global ocr_detection
     ocr_detection = pipeline(Tasks.ocr_detection, model='damo/cv_resnet18_ocr-detection-line-level_damo')
+
+    global ocr_recognition
     ocr_recognition = pipeline(Tasks.ocr_recognition, model='damo/cv_convnextTiny_ocr-recognition-document_damo')
 
 
@@ -290,6 +305,7 @@ def run(args):
     completed_requirements = ""
     memory = ""
     insight = ""
+    global temp_file
     temp_file = "temp"
     screenshot = "screenshot"
     if not os.path.exists(temp_file):
@@ -306,6 +322,7 @@ def run(args):
         iter += 1
         if iter == 1:
             screenshot_file = "./screenshot/screenshot.jpg"
+            print(ocr_detection)
             perception_infos, width, height = get_perception_infos(adb_path, screenshot_file)
             shutil.rmtree(temp_file)
             os.mkdir(temp_file)
@@ -348,6 +365,8 @@ def run(args):
         
         if "Open app" in action:
             app_name = action.split("(")[-1].split(")")[0]
+            print('=====================================================')
+            print(ocr_detection)
             text, coordinate = ocr(screenshot_file, ocr_detection, ocr_recognition)
             tap_coordinate = [0, 0]
             for ti in range(len(text)):
@@ -462,12 +481,51 @@ def run(args):
 
 def get_args():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--instruction", type=str)
-    parser.add_argument("--adb_path", type=str)
-    parser.add_argument("--api", type=str)
+    parser.add_argument("--actions", action="store_true")
+    parser.add_argument("--action", type=str)
+    parser.add_argument("--prompt", type=str)
+    parser.add_argument("--history", action="store_true")
     args = parser.parse_args()
     return args
 
+
+def list_actions():
+    return {'gmail':'登录Gmail', 'phone': '使用原生phone打电话', 'SMS': '发送短信'}
+
+def open_history():
+    current_directory = os.getcwd()
+    print(current_directory)
+    logs_dir = os.path.join(current_directory, 'logs')
+    print(logs_dir)
+    subprocess.run(f'explorer "{logs_dir}"')
+
+def run(args):
+    actions = args.actions
+    print(actions)
+    action = args.action
+    print(action)
+    prompt = args.prompt
+    print(prompt)
+    history = args.history
+    print(history)
+
+    if(actions is True):
+        print(list_actions())
+        return list_actions()
+    elif(action is not None):
+        do_run(args)
+        return
+    elif(prompt is not None):
+        do_run(args)
+        return
+    elif(history is True):
+        print(open_history())
+        return
+
 if __name__ == "__main__":
+    current_directory = os.getcwd()
+    logs_dir = os.path.join(current_directory, 'logs')
+    if not os.path.exists(logs_dir):
+        os.makedirs(logs_dir)
     args = get_args()
     run(args)

@@ -15,3 +15,4 @@ tf_keras==2.15.0
 pyclipper
 shapely
 supervision==0.21.0
+pyyaml
