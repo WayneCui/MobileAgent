@@ -1,5 +1,10 @@
 import os
+import sys
+import signal
+
 import subprocess
+import multiprocessing
+
 import time
 import copy
 import torch
@@ -26,7 +31,7 @@ import dashscope
 import concurrent
 
 ####################################### Edit your Setting #########################################
-with open('config.yaml', 'r') as file:
+with open('./config.yaml', 'r', encoding='UTF-8') as file:
     prime_service = yaml.safe_load(file)
     
 # Your ADB path
@@ -58,6 +63,10 @@ reflection_switch = prime_service['reflection_switch']
 
 # Memory Setting: If you want to improve the operating speed, you can disable the memory unit. This may reduce the success rate.
 memory_switch = prime_service['memory_switch']
+
+# actions
+actions = prime_service['actions']
+
 ###################################################################################################
 
 ocr_detection=''
@@ -257,10 +266,12 @@ def do_run(args):
     logger.addHandler(console_handler)
 
     # Create a file handler
-    action = args.action if args.action is not None else args.prompt
+    instruction = args.action if args.action is not None else args.prompt
+    if(instruction is None):
+        logger.error("未提供指令，请使用 --action 或 --prompt ")
+        return
     millis = int(round(time.time() * 1000))
-    logs_dir = prime_service['logging']['path']
-    file_handler = logging.FileHandler(f'{logs_dir}run_log{action}_{millis}.log')
+    file_handler = logging.FileHandler(f'logs/run_log{instruction}_{millis}.log')
     logger.addHandler(file_handler)
 
     ### Load caption model ###
@@ -307,6 +318,7 @@ def do_run(args):
     insight = ""
     global temp_file
     temp_file = "temp"
+    global screenshot
     screenshot = "screenshot"
     if not os.path.exists(temp_file):
         os.mkdir(temp_file)
@@ -318,7 +330,13 @@ def do_run(args):
     error_flag = False
 
     iter = 0
+    global abort
+    abort = False
     while True:
+        if(abort):
+            logger.warn('user has aborted this action')
+            return
+        
         iter += 1
         if iter == 1:
             screenshot_file = "./screenshot/screenshot.jpg"
@@ -482,12 +500,14 @@ def get_args():
     parser.add_argument("--action", type=str)
     parser.add_argument("--prompt", type=str)
     parser.add_argument("--history", action="store_true")
+    parser.add_argument("--stop", action="store_true")
     args = parser.parse_args()
     return args
 
 
 def list_actions():
-    return {'gmail':'登录Gmail', 'phone': '使用原生phone打电话', 'SMS': '发送短信'}
+    print(actions)
+    return actions
 
 def open_history():
     current_directory = os.getcwd()
@@ -495,11 +515,23 @@ def open_history():
 
     subprocess.run(f'explorer "{logs_dir}"')
 
+def abort_action():
+    abort = True
+    os.kill(7625,signal.SIGINT)
+
+def handle_interrupt(signum,frame):
+    print('Receive keyboard interrupt')
+    sys.exit(0)  #退出进程
+
+#注册信号处理程序
+signal.signal(signal.SIGINT,handle_interrupt)
+
 def run(args):
     actions = args.actions
     action = args.action
     prompt = args.prompt
     history = args.history
+    stop = args.stop
 
     if(actions is True):
         return list_actions()
@@ -511,6 +543,9 @@ def run(args):
         return
     elif(history is True):
         open_history()
+        return
+    elif(stop is True):
+        abort_action()
         return
 
 if __name__ == "__main__":
