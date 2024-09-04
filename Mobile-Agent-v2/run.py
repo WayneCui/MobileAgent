@@ -4,6 +4,7 @@ import signal
 
 import subprocess
 import multiprocessing
+import json
 
 import time
 import copy
@@ -65,7 +66,12 @@ reflection_switch = prime_service['reflection_switch']
 memory_switch = prime_service['memory_switch']
 
 # actions
-actions = prime_service['actions']
+# actions = prime_service['actions']
+# print(actions)
+# print(type(actions))
+
+with open('./actions.json', 'r', encoding='UTF-8') as actionsfile:
+    actions = json.load(actionsfile)
 
 ###################################################################################################
 
@@ -266,7 +272,20 @@ def do_run(args):
     logger.addHandler(console_handler)
 
     # Create a file handler
-    instruction = args.action if args.action is not None else args.prompt
+    # instruction = args.action if args.action is not None else args.prompt
+    if(args.action is not None): 
+        # print(actions)
+        # print(args.action)
+        for a in actions:
+            if(a['action'] == args.action):
+                instruction = a['prompt']
+                # print(instruction)
+                break
+    if(instruction is None and args.prompt is not None):
+        instruction = args.prompt
+
+    logger.info(f'用户提供的指令是: {instruction}')
+
     if(instruction is None):
         logger.error("未提供指令，请使用 --action 或 --prompt ")
         return
