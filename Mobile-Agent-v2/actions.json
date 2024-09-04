@@ -1,0 +1,22 @@
+[
+    {
+        "action": "open_browser",
+        "tooltip": "访问谷歌浏览器",
+        "prompt": "打开Chrome浏览器，浏览网页（网址 www.baidu.com）"
+    },
+    {
+        "action": "open_camera",
+        "tooltip": "打开相机",
+        "prompt": "打开相机"
+    },
+    {
+        "action": "open_map",
+        "tooltip": "访问地图",
+        "prompt": "打开Maps APP，定位到颐和园"
+    },
+    {
+        "action": "calendar",
+        "tooltip": "日历设置行程",
+        "prompt": "日历设置行程，新增加行程：看牙"
+    }
+]
