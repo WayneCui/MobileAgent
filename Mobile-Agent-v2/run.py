@@ -268,7 +268,7 @@ def do_run(args):
     logger.setLevel(logging.INFO)
 
     # Add a StreamHandler to send log messages to console
-    console_handler = logging.StreamHandler()
+    console_handler = logging.StreamHandler(sys.stdout)
     logger.addHandler(console_handler)
 
     # Create a file handler
