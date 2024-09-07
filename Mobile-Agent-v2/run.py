@@ -5,7 +5,7 @@ import time
 import os, signal
 
 import subprocess
-from multiprocessing import Process, Value
+from multiprocessing import Process, Value, freeze_support
 from multiprocessing.connection import Listener
 from multiprocessing.connection import Client
 
@@ -588,6 +588,7 @@ def run(args):
         return
 
 if __name__ == "__main__":
+    freeze_support()
     current_directory = os.getcwd()
     logs_dir = os.path.join(current_directory, 'logs')
     if not os.path.exists(logs_dir):
