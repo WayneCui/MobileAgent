@@ -1,12 +1,16 @@
 import os
 import sys
-import signal
+import traceback
+import time
+import os, signal
 
 import subprocess
-import multiprocessing
+from multiprocessing import Process, Value
+from multiprocessing.connection import Listener
+from multiprocessing.connection import Client
+
 import json
 
-import time
 import copy
 import torch
 import shutil
@@ -260,7 +264,7 @@ def get_perception_infos(adb_path, screenshot_file):
         
     return perception_infos, width, height
 
-def do_run(instruction):
+def do_run(instruction, flag):
     ### init logging ###
     # Create a logger and set the log level to INFO
     logger = logging.getLogger(__name__)
@@ -340,11 +344,9 @@ def do_run(instruction):
     error_flag = False
 
     iter = 0
-    global abort
-    abort = False
     while True:
-        if(abort):
-            logger.warn('user has aborted this action')
+        if(flag.value):
+            logger.warning('user has aborted this action')
             return
         
         iter += 1
@@ -525,16 +527,38 @@ def open_history():
 
     subprocess.run(f'explorer "{logs_dir}"')
 
+def echo_client(conn, flag):
+    try:
+        while True:
+            msg = conn.recv()
+            conn.send(msg)
+            if msg == 'stop':
+                flag.value = True
+
+    except EOFError:
+        print('Connection closed')
+
+def echo_server(address, authkey, flag):
+    serv = Listener(address, authkey=authkey)
+    while True:
+        try:
+            client = serv.accept()
+            echo_client(client, flag)
+        except Exception:
+            traceback.print_exc()
+
+def run_action(instruction):
+    flag = Value('i', False)
+    p = Process(target=echo_server, args=(('', 25000), b'stop_an_action', flag))
+    p.start()
+
+    do_run(instruction, flag)
+    os.kill(p.pid, signal.SIGTERM)
+
 def abort_action():
-    abort = True
-    os.kill(7625,signal.SIGINT)
-
-def handle_interrupt(signum,frame):
-    print('Receive keyboard interrupt')
-    sys.exit(0)  #退出进程
-
-#注册信号处理程序
-signal.signal(signal.SIGINT,handle_interrupt)
+    c = Client(('localhost', 25000), authkey=b'stop_an_action')
+    c.send('stop')
+    c.recv()
 
 def run(args):
     list_all_actions = args.actions
@@ -550,11 +574,11 @@ def run(args):
             if(a['action'] == args.action):
                 instruction = a['prompt']
                 # print(instruction)
-                do_run(instruction)
+                run_action(instruction)
                 break
         return
     elif(prompt is not None):
-        do_run(prompt)
+        run_action(prompt)
         return
     elif(history is True):
         open_history()
