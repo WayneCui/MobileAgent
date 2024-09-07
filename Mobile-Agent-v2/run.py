@@ -69,7 +69,6 @@ memory_switch = prime_service['memory_switch']
 # actions = prime_service['actions']
 # print(actions)
 # print(type(actions))
-
 with open('./actions.json', 'r', encoding='UTF-8') as actionsfile:
     actions = json.load(actionsfile)
 
@@ -261,7 +260,7 @@ def get_perception_infos(adb_path, screenshot_file):
         
     return perception_infos, width, height
 
-def do_run(args):
+def do_run(instruction):
     ### init logging ###
     # Create a logger and set the log level to INFO
     logger = logging.getLogger(__name__)
@@ -273,16 +272,8 @@ def do_run(args):
 
     # Create a file handler
     # instruction = args.action if args.action is not None else args.prompt
-    if(args.action is not None): 
-        # print(actions)
-        # print(args.action)
-        for a in actions:
-            if(a['action'] == args.action):
-                instruction = a['prompt']
-                # print(instruction)
-                break
-    if(instruction is None and args.prompt is not None):
-        instruction = args.prompt
+    
+   
 
     logger.info(f'用户提供的指令是: {instruction}')
 
@@ -546,19 +537,24 @@ def handle_interrupt(signum,frame):
 signal.signal(signal.SIGINT,handle_interrupt)
 
 def run(args):
-    actions = args.actions
+    list_all_actions = args.actions
     action = args.action
     prompt = args.prompt
     history = args.history
     stop = args.stop
 
-    if(actions is True):
+    if(list_all_actions is True):
         return list_actions()
     elif(action is not None):
-        do_run(args)
+        for a in actions:
+            if(a['action'] == args.action):
+                instruction = a['prompt']
+                # print(instruction)
+                do_run(instruction)
+                break
         return
     elif(prompt is not None):
-        do_run(args)
+        do_run(prompt)
         return
     elif(history is True):
         open_history()
