@@ -69,6 +69,8 @@ reflection_switch = prime_service['reflection_switch']
 # Memory Setting: If you want to improve the operating speed, you can disable the memory unit. This may reduce the success rate.
 memory_switch = prime_service['memory_switch']
 
+connection_port =  prime_service['connection_port'] if prime_service['connection_port'] is not None else 25000
+
 # actions
 # actions = prime_service['actions']
 # print(actions)
@@ -272,18 +274,16 @@ def do_run(instruction, flag):
 
     # Add a StreamHandler to send log messages to console
     console_handler = logging.StreamHandler(sys.stdout)
-    logger.addHandler(console_handler)
-
-    # Create a file handler
-    # instruction = args.action if args.action is not None else args.prompt
-    
+    logger.addHandler(console_handler)    
    
 
-    logger.info(f'用户提供的指令是: {instruction}')
 
     if(instruction is None):
         logger.error("未提供指令，请使用 --action 或 --prompt ")
         return
+    
+    logger.info(f'用户提供的指令是: {instruction}')
+
     millis = int(round(time.time() * 1000))
     file_handler = logging.FileHandler(f'logs/run_log{instruction}_{millis}.log')
     logger.addHandler(file_handler)
@@ -547,16 +547,31 @@ def echo_server(address, authkey, flag):
         except Exception:
             traceback.print_exc()
 
+def clear_process(port):
+    r = os.popen("netstat -ano | findstr "+str(port))
+    text = r.read()
+    arr=text.split("\n")
+    print("进程个数为：",len(arr)-1)
+    for text0 in arr:
+        arr2=text0.split(" ")
+        if len(arr2)>1:
+            pid=arr2[len(arr2)-1]
+            os.system("taskkill /PID "+pid+" /T /F")
+            print(pid)
+    r.close()
+
+
 def run_action(instruction):
+    clear_process(connection_port)
     flag = Value('i', False)
-    p = Process(target=echo_server, args=(('', 25000), b'stop_an_action', flag))
+    p = Process(target=echo_server, args=(('', connection_port), b'stop_an_action', flag))
     p.start()
 
     do_run(instruction, flag)
     os.kill(p.pid, signal.SIGTERM)
 
 def abort_action():
-    c = Client(('localhost', 25000), authkey=b'stop_an_action')
+    c = Client(('localhost', connection_port), authkey=b'stop_an_action')
     c.send('stop')
     c.recv()
 
