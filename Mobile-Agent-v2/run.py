@@ -8,6 +8,7 @@ import subprocess
 from multiprocessing import Process, Value, freeze_support
 from multiprocessing.connection import Listener
 from multiprocessing.connection import Client
+import concurrent
 
 import json
 
@@ -19,6 +20,8 @@ import yaml
 import argparse
 
 from PIL import Image, ImageDraw
+import dashscope
+
 
 from MobileAgent.api import inference_chat
 from MobileAgent.text_localization import ocr
@@ -27,13 +30,6 @@ from MobileAgent.controller import get_screenshot, tap, slide, type, back, home
 from MobileAgent.prompt import get_action_prompt, get_reflect_prompt, get_memory_prompt, get_process_prompt
 from MobileAgent.chat import init_action_chat, init_reflect_chat, init_memory_chat, add_response, add_response_two_image
 
-from modelscope.pipelines import pipeline
-from modelscope.utils.constant import Tasks
-from modelscope import snapshot_download, AutoModelForCausalLM, AutoTokenizer, GenerationConfig
-
-from dashscope import MultiModalConversation
-import dashscope
-import concurrent
 
 ####################################### Edit your Setting #########################################
 with open('./config.yaml', 'r', encoding='UTF-8') as file:
@@ -138,7 +134,7 @@ def process_image(image, query):
             },
         ]
     }]
-    response = MultiModalConversation.call(model=caption_model, messages=messages)
+    response = dashscope.MultiModalConversation.call(model=caption_model, messages=messages)
     
     try:
         response = response['output']['choices'][0]['message']['content'][0]["text"]
@@ -267,6 +263,10 @@ def get_perception_infos(adb_path, screenshot_file):
     return perception_infos, width, height
 
 def do_run(instruction, flag):
+    from modelscope.pipelines import pipeline
+    from modelscope.utils.constant import Tasks
+    from modelscope import snapshot_download, AutoModelForCausalLM, AutoTokenizer, GenerationConfig
+    
     ### init logging ###
     # Create a logger and set the log level to INFO
     logger = logging.getLogger(__name__)
