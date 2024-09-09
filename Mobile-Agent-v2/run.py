@@ -3,6 +3,7 @@ import sys
 import traceback
 import time
 import os, signal
+import csv
 
 import subprocess
 from multiprocessing import Process, Value, freeze_support
@@ -65,7 +66,9 @@ reflection_switch = prime_service['reflection_switch']
 # Memory Setting: If you want to improve the operating speed, you can disable the memory unit. This may reduce the success rate.
 memory_switch = prime_service['memory_switch']
 
-connection_port =  prime_service['connection_port'] if prime_service['connection_port'] is not None else 25000
+connection_port =  prime_service['connection_port'] if 'connection_port' in prime_service else 25000
+
+process_name = prime_service['process_name']
 
 # actions
 # actions = prime_service['actions']
@@ -560,6 +563,19 @@ def clear_process(port):
             print(pid)
     r.close()
 
+def kill_process():
+    r = os.popen("tasklist /FO csv | findstr " + process_name)
+    text = r.read()
+    arr=text.split("\n")
+    print("进程个数为：",len(arr)-1)
+    for row in csv.reader(arr):
+        print(row)
+        if len(row)>1:
+            pid=row[1]
+            print(pid)
+            os.system("taskkill /PID "+pid+" /T /F")
+    r.close()
+
 
 def run_action(instruction):
     clear_process(connection_port)
@@ -571,9 +587,10 @@ def run_action(instruction):
     os.kill(p.pid, signal.SIGTERM)
 
 def abort_action():
-    c = Client(('localhost', connection_port), authkey=b'stop_an_action')
-    c.send('stop')
-    c.recv()
+    # c = Client(('localhost', connection_port), authkey=b'stop_an_action')
+    # c.send('stop')
+    # c.recv()
+    kill_process()
 
 def run(args):
     list_all_actions = args.actions
