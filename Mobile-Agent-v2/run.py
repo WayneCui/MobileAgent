@@ -4,6 +4,9 @@ import traceback
 import time
 import os, signal
 import csv
+from ctypes import c_char_p
+from concurrent.futures import ThreadPoolExecutor,wait,ALL_COMPLETED,FIRST_COMPLETED, as_completed
+
 
 import subprocess
 from multiprocessing import Process, Value, freeze_support
@@ -79,11 +82,11 @@ with open('./actions.json', 'r', encoding='UTF-8') as actionsfile:
 
 ###################################################################################################
 
-ocr_detection=''
-ocr_recognition= ''
+# ocr_detection=''
+# ocr_recognition= ''
 # groundingdino_model = ''
 # temp_file = ''
-tokenizer = ''
+# tokenizer = ''
 model = ''
 
 
@@ -205,7 +208,7 @@ def merge_text_blocks(text_list, coordinates_list):
     return merged_text_blocks, merged_coordinates
 
 
-def get_perception_infos(adb_path, screenshot_file):
+def get_perception_infos(adb_path, screenshot_file, groundingdino_model):
     get_screenshot(adb_path)
     
     width, height = Image.open(screenshot_file).size
@@ -265,33 +268,11 @@ def get_perception_infos(adb_path, screenshot_file):
         
     return perception_infos, width, height
 
-def do_run(instruction, flag):
+def start_server():
     from modelscope.pipelines import pipeline
     from modelscope.utils.constant import Tasks
     from modelscope import snapshot_download, AutoModelForCausalLM, AutoTokenizer, GenerationConfig
-    
-    ### init logging ###
-    # Create a logger and set the log level to INFO
-    logger = logging.getLogger(__name__)
-    logger.setLevel(logging.INFO)
-
-    # Add a StreamHandler to send log messages to console
-    console_handler = logging.StreamHandler(sys.stdout)
-    logger.addHandler(console_handler)    
-   
-
-
-    if(instruction is None):
-        logger.error("未提供指令，请使用 --action 或 --prompt ")
-        return
-    
-    logger.info(f'用户提供的指令是: {instruction}')
-
-    millis = int(round(time.time() * 1000))
-    file_handler = logging.FileHandler(f'logs/run_log{instruction}_{millis}.log')
-    logger.addHandler(file_handler)
-
-    ### Load caption model ###
+        ### Load caption model ###
     device = "cuda"
     torch.manual_seed(1234)
     if caption_call_method == "local":
@@ -304,13 +285,14 @@ def do_run(instruction, flag):
             model = AutoModelForCausalLM.from_pretrained(qwen_dir, device_map=device, trust_remote_code=True,use_safetensors=True).eval()
             model.generation_config = GenerationConfig.from_pretrained(qwen_dir, trust_remote_code=True, do_sample=False)
         else:
-            logger.error("If you choose local caption method, you must choose the caption model from \"Qwen-vl-chat\" and \"Qwen-vl-chat-int4\"")
+            print("If you choose local caption method, you must choose the caption model from \"Qwen-vl-chat\" and \"Qwen-vl-chat-int4\"")
             exit(0)
+        global tokenizer
         tokenizer = AutoTokenizer.from_pretrained(qwen_dir, trust_remote_code=True)
     elif caption_call_method == "api":
         pass
     else:
-        logger.error("You must choose the caption model call function from \"local\" and \"api\"")
+        print("You must choose the caption model call function from \"local\" and \"api\"")
         exit(0)
 
 
@@ -324,6 +306,42 @@ def do_run(instruction, flag):
     global ocr_recognition
     ocr_recognition = pipeline(Tasks.ocr_recognition, model='damo/cv_convnextTiny_ocr-recognition-document_damo')
 
+    flag = Value('i', False)
+    # p = Process(target=echo_server, args=(('', connection_port), b'stop_an_action', flag))
+    # p.start()
+    serv = Listener(('', connection_port), authkey=b'stop_an_action')
+    pool= ThreadPoolExecutor(max_workers=2)
+
+    while True:
+        try:
+            client = serv.accept()
+            print("接收到客户端指令")
+            pool.submit(echo_client, client, flag, groundingdino_model, ocr_detection) 
+            # subprocess.Popen(echo_client(client, flag, groundingdino_model, ocr_detection))
+            # p = Process(target=echo_client, args=(client, flag, groundingdino_model, ocr_detection))
+            # p.start()
+        except Exception:
+            traceback.print_exc()
+
+def do_run(instruction, flag, groundingdino_model, ocr_detection):
+    ### init logging ###
+    # Create a logger and set the log level to INFO
+    logger = logging.getLogger(__name__)
+    logger.setLevel(logging.INFO)
+
+    # Add a StreamHandler to send log messages to console
+    console_handler = logging.StreamHandler(sys.stdout)
+    logger.addHandler(console_handler)    
+
+    if(instruction is None):
+        logger.error("未提供指令，请使用 --action 或 --prompt ")
+        return
+    
+    logger.info(f'用户提供的指令是: {instruction}')
+
+    millis = int(round(time.time() * 1000))
+    file_handler = logging.FileHandler(f'logs/run_log{instruction}_{millis}.log')
+    logger.addHandler(file_handler)
 
     thought_history = []
     summary_history = []
@@ -355,7 +373,7 @@ def do_run(instruction, flag):
         iter += 1
         if iter == 1:
             screenshot_file = "./screenshot/screenshot.jpg"
-            perception_infos, width, height = get_perception_infos(adb_path, screenshot_file)
+            perception_infos, width, height = get_perception_infos(adb_path, screenshot_file, groundingdino_model)
             shutil.rmtree(temp_file)
             os.mkdir(temp_file)
             
@@ -441,7 +459,7 @@ def do_run(instruction, flag):
             os.remove(last_screenshot_file)
         os.rename(screenshot_file, last_screenshot_file)
         
-        perception_infos, width, height = get_perception_infos(adb_path, screenshot_file)
+        perception_infos, width, height = get_perception_infos(adb_path, screenshot_file, groundingdino_model)
         shutil.rmtree(temp_file)
         os.mkdir(temp_file)
         
@@ -511,12 +529,12 @@ def do_run(instruction, flag):
 
 def get_args():
     parser = argparse.ArgumentParser()
+    parser.add_argument("--init", action="store_true")
     parser.add_argument("--actions", action="store_true")
     parser.add_argument("--action", type=str)
     parser.add_argument("--prompt", type=str)
     parser.add_argument("--history", action="store_true")
     parser.add_argument("--stop", action="store_true")
-    parser.add_argument("--abort", action="store_true")
     args = parser.parse_args()
     return args
 
@@ -531,31 +549,37 @@ def open_history():
 
     subprocess.run(f'explorer "{logs_dir}"')
 
-def echo_client(conn, flag):
+def echo_client(conn, flag, groundingdino_model, ocr_detection):
     try:
         while True:
             msg = conn.recv()
             conn.send(msg)
+            #print("内部消息: " + msg)
             if msg == 'stop':
                 flag.value = True
+            elif msg.startswith('run '):
+                flag.value = False
+                instruction = msg[4:]
+                # print("开始执行：" + instruction)
+                do_run(instruction, flag, groundingdino_model, ocr_detection)
 
     except EOFError:
         print('Connection closed')
 
-def echo_server(address, authkey, flag):
-    serv = Listener(address, authkey=authkey)
-    while True:
-        try:
-            client = serv.accept()
-            echo_client(client, flag)
-        except Exception:
-            traceback.print_exc()
+# def echo_server(address, authkey, flag):
+#     serv = Listener(address, authkey=authkey)
+#     while True:
+#         try:
+#             client = serv.accept()
+#             echo_client(client, flag)
+#         except Exception:
+#             traceback.print_exc()
 
 def clear_process(port):
     r = os.popen("netstat -ano | findstr "+str(port))
     text = r.read()
     arr=text.split("\n")
-    print("进程个数为：",len(arr)-1)
+    #print("进程个数为：",len(arr)-1)
     for text0 in arr:
         arr2=text0.split(" ")
         if len(arr2)>1:
@@ -568,7 +592,7 @@ def kill_process():
     r = os.popen("tasklist /FO csv | findstr " + process_name)
     text = r.read()
     arr=text.split("\n")
-    print("进程个数为：",len(arr)-1)
+    #print("进程个数为：",len(arr)-1)
     for row in csv.reader(arr):
         print(row)
         if len(row)>1:
@@ -579,15 +603,14 @@ def kill_process():
 
 
 def run_action(instruction):
-    clear_process(connection_port)
-    flag = Value('i', False)
-    p = Process(target=echo_server, args=(('', connection_port), b'stop_an_action', flag))
-    p.start()
-
-    do_run(instruction, flag)
-    os.kill(p.pid, signal.SIGTERM)
+    # clear_process(connection_port)
+    print("开始执行指令：" + instruction)
+    c = Client(('localhost', connection_port), authkey=b'stop_an_action')
+    c.send('run ' + instruction)
+    c.recv()
 
 def stop_action():
+    print("开始停止运行当前指令")
     c = Client(('localhost', connection_port), authkey=b'stop_an_action')
     c.send('stop')
     c.recv()
@@ -596,14 +619,16 @@ def kill_action():
     kill_process()
 
 def run(args):
+    init = args.init
     list_all_actions = args.actions
     action = args.action
     prompt = args.prompt
     history = args.history
     stop = args.stop
-    abort = args.abort
 
-    if(list_all_actions is True):
+    if(init is True):
+        return start_server()
+    elif(list_all_actions is True):
         return list_actions()
     elif(action is not None):
         for a in actions:
@@ -621,9 +646,6 @@ def run(args):
         return
     elif(stop is True):
         stop_action()
-        return
-    elif(abort is True):
-        kill_process()
         return
 
 if __name__ == "__main__":
