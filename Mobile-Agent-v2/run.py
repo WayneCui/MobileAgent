@@ -516,6 +516,7 @@ def get_args():
     parser.add_argument("--prompt", type=str)
     parser.add_argument("--history", action="store_true")
     parser.add_argument("--stop", action="store_true")
+    parser.add_argument("--abort", action="store_true")
     args = parser.parse_args()
     return args
 
@@ -586,10 +587,12 @@ def run_action(instruction):
     do_run(instruction, flag)
     os.kill(p.pid, signal.SIGTERM)
 
-def abort_action():
-    # c = Client(('localhost', connection_port), authkey=b'stop_an_action')
-    # c.send('stop')
-    # c.recv()
+def stop_action():
+    c = Client(('localhost', connection_port), authkey=b'stop_an_action')
+    c.send('stop')
+    c.recv()
+
+def kill_action():
     kill_process()
 
 def run(args):
@@ -598,6 +601,7 @@ def run(args):
     prompt = args.prompt
     history = args.history
     stop = args.stop
+    abort = args.abort
 
     if(list_all_actions is True):
         return list_actions()
@@ -616,7 +620,10 @@ def run(args):
         open_history()
         return
     elif(stop is True):
-        abort_action()
+        stop_action()
+        return
+    elif(abort is True):
+        kill_process()
         return
 
 if __name__ == "__main__":
