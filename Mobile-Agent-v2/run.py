@@ -51,6 +51,9 @@ API_url = prime_service['API_url']
 # Your GPT-4o API Token
 token = prime_service['token']
 
+# model version
+llm_model = prime_service['model']
+
 # Choose between "api" and "local". api: use the qwen api. local: use the local qwen checkpoint
 caption_call_method = "api"
 
@@ -70,8 +73,6 @@ reflection_switch = prime_service['reflection_switch']
 memory_switch = prime_service['memory_switch']
 
 connection_port =  prime_service['connection_port'] if 'connection_port' in prime_service else 25000
-
-process_name = prime_service['process_name']
 
 # actions
 # actions = prime_service['actions']
@@ -310,7 +311,7 @@ def start_server():
     # p = Process(target=echo_server, args=(('', connection_port), b'stop_an_action', flag))
     # p.start()
     serv = Listener(('', connection_port), authkey=b'stop_an_action')
-    pool= ThreadPoolExecutor(max_workers=2)
+    pool= ThreadPoolExecutor(max_workers=10)
 
     while True:
         try:
@@ -390,7 +391,7 @@ def do_run(instruction, flag, groundingdino_model, ocr_detection):
         chat_action = init_action_chat()
         chat_action = add_response("user", prompt_action, chat_action, screenshot_file)
 
-        output_action = inference_chat(chat_action, 'gpt-4o', API_url, token)
+        output_action = inference_chat(chat_action, llm_model, API_url, token)
         thought = output_action.split("### Thought ###")[-1].split("### Action ###")[0].replace("\n", " ").replace(":", "").replace("  ", " ").strip()
         summary = output_action.split("### Operation ###")[-1].replace("\n", " ").replace("  ", " ").strip()
         action = output_action.split("### Action ###")[-1].split("### Operation ###")[0].replace("\n", " ").replace("  ", " ").strip()
@@ -403,7 +404,7 @@ def do_run(instruction, flag, groundingdino_model, ocr_detection):
         if memory_switch:
             prompt_memory = get_memory_prompt(insight)
             chat_action = add_response("user", prompt_memory, chat_action)
-            output_memory = inference_chat(chat_action, 'gpt-4o', API_url, token)
+            output_memory = inference_chat(chat_action, llm_model, API_url, token)
             chat_action = add_response("assistant", output_memory, chat_action)
             status = "#" * 50 + " Memory " + "#" * 50
             logger.info(status)
@@ -476,7 +477,7 @@ def do_run(instruction, flag, groundingdino_model, ocr_detection):
             chat_reflect = init_reflect_chat()
             chat_reflect = add_response_two_image("user", prompt_reflect, chat_reflect, [last_screenshot_file, screenshot_file])
 
-            output_reflect = inference_chat(chat_reflect, 'gpt-4o', API_url, token)
+            output_reflect = inference_chat(chat_reflect, llm_model, API_url, token)
             reflect = output_reflect.split("### Answer ###")[-1].replace("\n", " ").strip()
             chat_reflect = add_response("assistant", output_reflect, chat_reflect)
             status = "#" * 50 + " Reflcetion " + "#" * 50
@@ -588,18 +589,18 @@ def clear_process(port):
             print(pid)
     r.close()
 
-def kill_process():
-    r = os.popen("tasklist /FO csv | findstr " + process_name)
-    text = r.read()
-    arr=text.split("\n")
-    #print("进程个数为：",len(arr)-1)
-    for row in csv.reader(arr):
-        print(row)
-        if len(row)>1:
-            pid=row[1]
-            print(pid)
-            os.system("taskkill /PID "+pid+" /T /F")
-    r.close()
+# def kill_process():
+#     r = os.popen("tasklist /FO csv | findstr " + process_name)
+#     text = r.read()
+#     arr=text.split("\n")
+#     #print("进程个数为：",len(arr)-1)
+#     for row in csv.reader(arr):
+#         print(row)
+#         if len(row)>1:
+#             pid=row[1]
+#             print(pid)
+#             os.system("taskkill /PID "+pid+" /T /F")
+#     r.close()
 
 
 def run_action(instruction):
@@ -614,9 +615,6 @@ def stop_action():
     c = Client(('localhost', connection_port), authkey=b'stop_an_action')
     c.send('stop')
     c.recv()
-
-def kill_action():
-    kill_process()
 
 def run(args):
     init = args.init
