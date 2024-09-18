@@ -3,8 +3,6 @@ import sys
 import traceback
 import time
 import os, signal
-import csv
-from ctypes import c_char_p
 from concurrent.futures import ThreadPoolExecutor,wait,ALL_COMPLETED,FIRST_COMPLETED, as_completed
 
 
@@ -53,6 +51,7 @@ token = prime_service['token']
 
 # model version
 llm_model = prime_service['model']
+planning_model = prime_service['planning_model']
 
 # Choose between "api" and "local". api: use the qwen api. local: use the local qwen checkpoint
 caption_call_method = "api"
@@ -372,7 +371,7 @@ def do_run(instruction, flag, groundingdino_model, ocr_detection):
             return
         
         iter += 1
-        if iter == 1:
+        if iter == 1 and not flag.value:
             screenshot_file = "./screenshot/screenshot.jpg"
             perception_infos, width, height = get_perception_infos(adb_path, screenshot_file, groundingdino_model)
             shutil.rmtree(temp_file)
@@ -391,7 +390,10 @@ def do_run(instruction, flag, groundingdino_model, ocr_detection):
         chat_action = init_action_chat()
         chat_action = add_response("user", prompt_action, chat_action, screenshot_file)
 
-        output_action = inference_chat(chat_action, llm_model, API_url, token)
+        output_action = inference_chat(chat_action, llm_model, API_url, token, logger, flag.value)
+        if(output_action is None):
+            return
+        
         thought = output_action.split("### Thought ###")[-1].split("### Action ###")[0].replace("\n", " ").replace(":", "").replace("  ", " ").strip()
         summary = output_action.split("### Operation ###")[-1].replace("\n", " ").replace("  ", " ").strip()
         action = output_action.split("### Action ###")[-1].split("### Operation ###")[0].replace("\n", " ").replace("  ", " ").strip()
@@ -404,7 +406,10 @@ def do_run(instruction, flag, groundingdino_model, ocr_detection):
         if memory_switch:
             prompt_memory = get_memory_prompt(insight)
             chat_action = add_response("user", prompt_memory, chat_action)
-            output_memory = inference_chat(chat_action, llm_model, API_url, token)
+            output_memory = inference_chat(chat_action, llm_model, API_url, token, logger, flag.value)
+            if(output_memory is None):
+                return
+        
             chat_action = add_response("assistant", output_memory, chat_action)
             status = "#" * 50 + " Memory " + "#" * 50
             logger.info(status)
@@ -477,7 +482,9 @@ def do_run(instruction, flag, groundingdino_model, ocr_detection):
             chat_reflect = init_reflect_chat()
             chat_reflect = add_response_two_image("user", prompt_reflect, chat_reflect, [last_screenshot_file, screenshot_file])
 
-            output_reflect = inference_chat(chat_reflect, llm_model, API_url, token)
+            output_reflect = inference_chat(chat_reflect, llm_model, API_url, token, logger, flag.value)
+            if(output_reflect is None):
+                return
             reflect = output_reflect.split("### Answer ###")[-1].replace("\n", " ").strip()
             chat_reflect = add_response("assistant", output_reflect, chat_reflect)
             status = "#" * 50 + " Reflcetion " + "#" * 50
@@ -493,7 +500,9 @@ def do_run(instruction, flag, groundingdino_model, ocr_detection):
                 prompt_planning = get_process_prompt(instruction, thought_history, summary_history, action_history, completed_requirements, add_info)
                 chat_planning = init_memory_chat()
                 chat_planning = add_response("user", prompt_planning, chat_planning)
-                output_planning = inference_chat(chat_planning, 'gpt-4-turbo', API_url, token)
+                output_planning = inference_chat(chat_planning, planning_model, API_url, token, logger, flag.value)
+                if(output_planning is None):
+                    return
                 chat_planning = add_response("assistant", output_planning, chat_planning)
                 status = "#" * 50 + " Planning " + "#" * 50
                 logger.info(status)
@@ -518,7 +527,9 @@ def do_run(instruction, flag, groundingdino_model, ocr_detection):
             prompt_planning = get_process_prompt(instruction, thought_history, summary_history, action_history, completed_requirements, add_info)
             chat_planning = init_memory_chat()
             chat_planning = add_response("user", prompt_planning, chat_planning)
-            output_planning = inference_chat(chat_planning, 'gpt-4-turbo', API_url, token)
+            output_planning = inference_chat(chat_planning, planning_model, API_url, token, logger, flag.value)
+            if(output_planning is None):
+                return
             chat_planning = add_response("assistant", output_planning, chat_planning)
             status = "#" * 50 + " Planning " + "#" * 50
             logger.info(status)

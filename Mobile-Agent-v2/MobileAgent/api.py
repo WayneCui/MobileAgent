@@ -6,7 +6,7 @@ def encode_image(image_path):
         return base64.b64encode(image_file.read()).decode('utf-8')
 
 
-def inference_chat(chat, model, api_url, token):    
+def inference_chat(chat, model, api_url, token, logger, abort_flag):    
     headers = {
         "Content-Type": "application/json",
         "Authorization": f"Bearer {token}"
@@ -24,16 +24,19 @@ def inference_chat(chat, model, api_url, token):
         data["messages"].append({"role": role, "content": content})
 
     while True:
+        if(abort_flag):
+            logger.warning('user has aborted this action')
+            return
         try:
             res = requests.post(api_url, headers=headers, json=data)
             res_json = res.json()
             res_content = res_json['choices'][0]['message']['content']
         except:
-            print("Network Error:")
+            logger.error("Network Error:")
             try:
-                print(res.json())
+                logger.info(res.json())
             except:
-                print("Request Failed")
+                logger.error("Request Failed")
         else:
             break
     
