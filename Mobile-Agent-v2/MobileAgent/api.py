@@ -23,6 +23,7 @@ def inference_chat(chat, model, api_url, token, logger, abort_flag):
     for role, content in chat:
         data["messages"].append({"role": role, "content": content})
 
+    print("inference_chat")
     while True:
         if(abort_flag):
             logger.warning('user has aborted this action')

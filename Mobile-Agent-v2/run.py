@@ -2,7 +2,7 @@ import os
 import sys
 import traceback
 import time
-import os, signal
+import os, threading
 from concurrent.futures import ThreadPoolExecutor,wait,ALL_COMPLETED,FIRST_COMPLETED, as_completed
 
 
@@ -310,13 +310,14 @@ def start_server():
     # p = Process(target=echo_server, args=(('', connection_port), b'stop_an_action', flag))
     # p.start()
     serv = Listener(('', connection_port), authkey=b'stop_an_action')
-    pool= ThreadPoolExecutor(max_workers=10)
+    pool= ThreadPoolExecutor(max_workers=100)
 
     while True:
         try:
             client = serv.accept()
             print("接收到客户端指令")
             pool.submit(echo_client, client, flag, groundingdino_model, ocr_detection) 
+            print("当前线程数量：" + str(len(pool._threads)))
             # subprocess.Popen(echo_client(client, flag, groundingdino_model, ocr_detection))
             # p = Process(target=echo_client, args=(client, flag, groundingdino_model, ocr_detection))
             # p.start()
@@ -337,7 +338,12 @@ def do_run(instruction, flag, groundingdino_model, ocr_detection):
         logger.error("未提供指令，请使用 --action 或 --prompt ")
         return
     
-    logger.info(f'用户提供的指令是: {instruction}')
+    if(flag.value):
+        logger.warning('user has aborted this action')
+        return
+    
+    thread_id = threading.current_thread().ident
+    logger.info(f'用户提供的指令是: {instruction}, thread_id={thread_id}')
 
     millis = int(round(time.time() * 1000))
     file_handler = logging.FileHandler(f'logs/run_log{instruction}_{millis}.log')
@@ -363,13 +369,14 @@ def do_run(instruction, flag, groundingdino_model, ocr_detection):
     if not os.path.exists(screenshot):
         os.mkdir(screenshot)
     error_flag = False
-
+    print('====================')
     iter = 0
     while True:
         if(flag.value):
             logger.warning('user has aborted this action')
             return
         
+        print('--------------------------------')
         iter += 1
         if iter == 1 and not flag.value:
             screenshot_file = "./screenshot/screenshot.jpg"
