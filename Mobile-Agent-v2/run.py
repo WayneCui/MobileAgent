@@ -73,6 +73,8 @@ memory_switch = prime_service['memory_switch']
 
 connection_port =  prime_service['connection_port'] if 'connection_port' in prime_service else 25000
 
+mock_result = prime_service['mock_result']
+
 # actions
 # actions = prime_service['actions']
 # print(actions)
@@ -340,6 +342,7 @@ def do_run(instruction, flag, groundingdino_model, ocr_detection):
     
     if(flag.value):
         logger.warning('user has aborted this action')
+        logger.info('final result: 取消')
         return
     
     thread_id = threading.current_thread().ident
@@ -374,6 +377,7 @@ def do_run(instruction, flag, groundingdino_model, ocr_detection):
     while True:
         if(flag.value):
             logger.warning('user has aborted this action')
+            logger.info('final result: 取消')
             return
         
         print('--------------------------------')
@@ -461,6 +465,12 @@ def do_run(instruction, flag, groundingdino_model, ocr_detection):
             home(adb_path)
             
         elif "Stop" in action:
+            exe_result = "成功"
+            if mock_result == 1:
+                exe_result = "成功"
+            elif mock_result == 2:
+                exe_result = "失败"
+            logger.info("final result: " + exe_result)
             break
         
         time.sleep(5)
