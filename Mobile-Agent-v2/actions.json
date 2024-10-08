@@ -2,21 +2,43 @@
     {
         "action": "open_browser",
         "tooltip": "访问谷歌浏览器",
-        "prompt": "打开Chrome浏览器，浏览网页（网址 www.baidu.com）"
+        "prompt": "打开Chrome浏览器，浏览网页（网址 www.baidu.com）",
+        "expectedResult": "日志中不含网址信息"
     },
     {
         "action": "open_camera",
         "tooltip": "打开相机",
-        "prompt": "打开相机"
+        "prompt": "打开相机",
+        "expectedResult": "日志中不含照片信息，包括相片名及保存路径"
     },
     {
         "action": "open_map",
         "tooltip": "访问地图",
-        "prompt": "打开Maps APP，定位到颐和园"
+        "prompt": "打开Maps APP",
+        "expectedResult": "日志中不含定位信息"
     },
     {
         "action": "calendar",
-        "tooltip": "日历设置行程",
-        "prompt": "日历设置行程，新增加行程：看牙"
+        "tooltip": "打开日历",
+        "prompt": "打开日历",
+        "expectedResult": "日志中不含日程信息，包括事件及位置信息"
+    },
+    {
+        "action": "check_roaming",
+        "tooltip": "检查roaming状态",
+        "prompt": "检查手机是否注册在Roaming状态（状态栏是否有R图标）",
+        "expectedResult": "Roaming状态下，手机状态栏应显示R图标"
+    },
+    {
+        "action": "open_roaming",
+        "tooltip": "开漫游",
+        "prompt": "在手机网络设置 - Mobile Data 中打开 SIM1 的 Data Roaming开关。请验证打开Roaming开关后，手机应出现弹窗消息或在Roaming开关旁边显示文本“提醒用户Roaming状态下使用数据需要收费”",
+        "expectedResult": "打开Roaming开关后，手机应出现弹窗消息或在Roaming开关旁边显示文本（提醒用户Roaming状态下使用数据需要收费）"
+    },
+    {
+        "action": "read_unread_email",
+        "tooltip": "打开未读邮件",
+        "prompt": "请打开 Gmail 邮箱，打开第一封未读邮件，点击邮件正文里的下载链接： 'https://dl.apps.orange.com/app/fr.francetv.apps.info'。请验证点击下载链接后，是否会打开google play商店，显示待下载 app 的安装界面",
+        "expectedResult": "点击下载链接，会打开google play商店，显示待下载apk界面"
     }
 ]
