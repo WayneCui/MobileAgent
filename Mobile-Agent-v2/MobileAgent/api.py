@@ -25,8 +25,9 @@ def inference_chat(chat, model, api_url, token, logger, abort_flag):
 
     print("inference_chat")
     while True:
-        if(abort_flag):
+        if(abort_flag.value):
             logger.warning('user has aborted this action')
+            logger.info('final result: 取消')
             return
         try:
             res = requests.post(api_url, headers=headers, json=data)

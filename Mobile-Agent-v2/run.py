@@ -401,7 +401,7 @@ def do_run(instruction, flag, groundingdino_model, ocr_detection):
         chat_action = init_action_chat()
         chat_action = add_response("user", prompt_action, chat_action, screenshot_file)
 
-        output_action = inference_chat(chat_action, llm_model, API_url, token, logger, flag.value)
+        output_action = inference_chat(chat_action, llm_model, API_url, token, logger, flag)
         if(output_action is None):
             return
         
@@ -417,7 +417,7 @@ def do_run(instruction, flag, groundingdino_model, ocr_detection):
         if memory_switch:
             prompt_memory = get_memory_prompt(insight)
             chat_action = add_response("user", prompt_memory, chat_action)
-            output_memory = inference_chat(chat_action, llm_model, API_url, token, logger, flag.value)
+            output_memory = inference_chat(chat_action, llm_model, API_url, token, logger, flag)
             if(output_memory is None):
                 return
         
@@ -499,7 +499,7 @@ def do_run(instruction, flag, groundingdino_model, ocr_detection):
             chat_reflect = init_reflect_chat()
             chat_reflect = add_response_two_image("user", prompt_reflect, chat_reflect, [last_screenshot_file, screenshot_file])
 
-            output_reflect = inference_chat(chat_reflect, llm_model, API_url, token, logger, flag.value)
+            output_reflect = inference_chat(chat_reflect, llm_model, API_url, token, logger, flag)
             if(output_reflect is None):
                 return
             reflect = output_reflect.split("### Answer ###")[-1].replace("\n", " ").strip()
@@ -517,7 +517,7 @@ def do_run(instruction, flag, groundingdino_model, ocr_detection):
                 prompt_planning = get_process_prompt(instruction, thought_history, summary_history, action_history, completed_requirements, add_info)
                 chat_planning = init_memory_chat()
                 chat_planning = add_response("user", prompt_planning, chat_planning)
-                output_planning = inference_chat(chat_planning, planning_model, API_url, token, logger, flag.value)
+                output_planning = inference_chat(chat_planning, planning_model, API_url, token, logger, flag)
                 if(output_planning is None):
                     return
                 chat_planning = add_response("assistant", output_planning, chat_planning)
@@ -544,7 +544,7 @@ def do_run(instruction, flag, groundingdino_model, ocr_detection):
             prompt_planning = get_process_prompt(instruction, thought_history, summary_history, action_history, completed_requirements, add_info)
             chat_planning = init_memory_chat()
             chat_planning = add_response("user", prompt_planning, chat_planning)
-            output_planning = inference_chat(chat_planning, planning_model, API_url, token, logger, flag.value)
+            output_planning = inference_chat(chat_planning, planning_model, API_url, token, logger, flag)
             if(output_planning is None):
                 return
             chat_planning = add_response("assistant", output_planning, chat_planning)
